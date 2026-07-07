@@ -198,6 +198,18 @@ local floatName = "OrcaHub_FloatPlatform"
 local TaserConfig = { Enabled = false }
 local PepperConfig = { Enabled = false }
 
+-- Taser Rifle Config
+local TaserRifleConfig = {
+    Enabled = false,
+    MaxDistance = 300,
+    ProjectileSpeed = 1500,
+    PingCompensation = 0.05,
+    FireDelay = 0
+}
+local oldRifleFire = nil
+local rifleHooked = false
+local RifleFireEvent = ReplicatedStorage:WaitForChild("Remote", 5):WaitForChild("RifleFireEvent", 5)
+
 -- ============================================================
 -- SHARED HELPER FUNCTIONS
 -- ============================================================
@@ -1399,9 +1411,9 @@ local function isHostilePatient(p)
     return true
 end
 
-local function getClosestHostile()
+local function getClosestHostile(maxDist)
     local closest = nil
-    local shortest = 300
+    local shortest = maxDist or 300
     local myChar = player.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     if not myRoot then return nil end
@@ -1436,7 +1448,7 @@ local function hookEngine()
     pcall(function()
         oldGetMouseHit = hookfunction(UserInputService.GetMouseHit, function(self, ...)
             if silentAimActive() then
-                local part = getClosestHostile()
+                local part = getClosestHostile(300)
                 if part then return CFrame.new(part.Position) end
             end
             return oldGetMouseHit(self, ...)
@@ -1449,7 +1461,7 @@ local function hookEngine()
         oldIndex = rawMeta.__index
         rawMeta.__index = newcclosure(function(self, key)
             if silentAimActive() and (key == "Hit" or key == "hit") and self:IsA("Mouse") then
-                local part = getClosestHostile()
+                local part = getClosestHostile(300)
                 if part then return CFrame.new(part.Position) end
             end
             return oldIndex(self, key)
@@ -1475,7 +1487,7 @@ local function hookPepperCustom()
                     oldCustomGetMouseHit = customUIS.GetMouseHit
                     customUIS.GetMouseHit = function(...)
                         if PepperConfig.Enabled then
-                            local part = getClosestHostile()
+                            local part = getClosestHostile(300)
                             if part then return CFrame.new(part.Position) end
                         end
                         return oldCustomGetMouseHit(...)
@@ -1512,6 +1524,102 @@ SilentAimSection:Toggle({
             hookEngine()
             hookPepperCustom()
         end
+    end,
+})
+
+-- ── Section: Taser Rifle ──────────────────────────────────
+local RifleSection = OrderlyTab:Section({ Title = "Taser Rifle", Icon = "bow-arrow", Box = false, Opened = true })
+
+local function hookRifle()
+    if rifleHooked then return end
+    rifleHooked = true
+    
+    local function applyPrediction(args)
+        if TaserRifleConfig.Enabled then
+            local target = getClosestHostile(TaserRifleConfig.MaxDistance)
+            if target then
+                local head = player.Character and player.Character:FindFirstChild("Head")
+                if head then
+                    if TaserRifleConfig.FireDelay > 0 then
+                        task.wait(TaserRifleConfig.FireDelay)
+                    end
+                    local targetPos = target.Position
+                    local velocity = target.AssemblyLinearVelocity
+                    local targetHum = target.Parent and target.Parent:FindFirstChildOfClass("Humanoid")
+                    if targetHum and targetHum.FloorMaterial ~= Enum.Material.Air then
+                        velocity = Vector3.new(velocity.X, 0, velocity.Z)
+                    end
+                    local distance = (head.Position - targetPos).Magnitude
+                    local travelTime = (distance / TaserRifleConfig.ProjectileSpeed) + TaserRifleConfig.PingCompensation
+                    targetPos = targetPos + (velocity * travelTime)
+                    args[1] = (targetPos - head.Position).Unit
+                end
+            end
+        end
+        return args
+    end
+
+    pcall(function()
+        oldRifleFire = hookfunction(RifleFireEvent.FireServer, function(self, ...)
+            local args = applyPrediction({...})
+            return oldRifleFire(self, unpack(args))
+        end)
+    end)
+end
+
+RifleSection:Toggle({
+    Title    = "Taser Rifle Silent Aim",
+    Desc     = "Hooks the Taser Rifle fire event to redirect shots with prediction.",
+    Icon     = "crosshair",
+    Value    = false,
+    Flag     = "TaserRifleSilentAimEnabled",
+    Callback = function(state)
+        TaserRifleConfig.Enabled = state
+        if state then hookRifle() end
+    end,
+})
+
+RifleSection:Input({
+    Title       = "Max Distance",
+    Desc        = "Maximum range to acquire a target (default: 300).",
+    Placeholder = "Default: 300",
+    Flag        = "TaserRifleMaxDistance",
+    Callback    = function(value)
+        local num = tonumber(value)
+        if num and num > 0 then TaserRifleConfig.MaxDistance = num end
+    end,
+})
+
+RifleSection:Input({
+    Title       = "Projectile Speed",
+    Desc        = "Speed of the projectile for prediction (default: 1500).",
+    Placeholder = "Default: 1500",
+    Flag        = "TaserRifleProjectileSpeed",
+    Callback    = function(value)
+        local num = tonumber(value)
+        if num and num > 0 then TaserRifleConfig.ProjectileSpeed = num end
+    end,
+})
+
+RifleSection:Input({
+    Title       = "Ping Compensation",
+    Desc        = "Delay added to travel time for network ping (default: 0.05).",
+    Placeholder = "Default: 0.05",
+    Flag        = "TaserRiflePingComp",
+    Callback    = function(value)
+        local num = tonumber(value)
+        if num and num >= 0 then TaserRifleConfig.PingCompensation = num end
+    end,
+})
+
+RifleSection:Input({
+    Title       = "Fire Delay",
+    Desc        = "Seconds to wait after clicking before firing (default: 0).",
+    Placeholder = "Default: 0",
+    Flag        = "TaserRifleFireDelay",
+    Callback    = function(value)
+        local num = tonumber(value)
+        if num and num >= 0 then TaserRifleConfig.FireDelay = num end
     end,
 })
 
