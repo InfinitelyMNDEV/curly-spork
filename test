@@ -194,6 +194,10 @@ local floatCharConn = nil
 local currentFloatHeight = 0
 local floatName = "OrcaHub_FloatPlatform"
 
+-- Silent Aim Configs
+local TaserConfig = { Enabled = false }
+local PepperConfig = { Enabled = false }
+
 -- ============================================================
 -- SHARED HELPER FUNCTIONS
 -- ============================================================
@@ -1372,6 +1376,144 @@ local OrderlyTab = Window:Tab({ Title = "Orderly", Icon = "shield" })
 local EPUTab = Window:Tab({ Title = "EPU", Icon = "shield-check" })
 local PatientTab = Window:Tab({ Title = "Patient", Icon = "square-user-round" })
 local MedicalTab = Window:Tab({ Title = "Medical", Icon = "pill" })
+
+-- ── Section: Silent Aim ───────────────────────────────────
+local SilentAimSection = OrderlyTab:Section({ Title = "Silent Aim", Icon = "ear-off", Box = false, Opened = true })
+
+-- Shared Silent Aim Logic
+local PatientTeam = Teams:FindFirstChild("PATIENT")
+if not PatientTeam then
+    task.spawn(function()
+        PatientTeam = Teams:WaitForChild("PATIENT", 10)
+    end)
+end
+
+local function isHostilePatient(p)
+    if not p or p == player then return false end
+    if not PatientTeam or p.Team ~= PatientTeam then return false end
+    if p:GetAttribute("IsTagged") ~= true then return false end
+    local char = p.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not hum or hum.Health <= 0 or not root then return false end
+    return true
+end
+
+local function getClosestHostile()
+    local closest = nil
+    local shortest = 300
+    local myChar = player.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return nil end
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isHostilePatient(p) then
+            local root = p.Character.HumanoidRootPart
+            local dist = (myRoot.Position - root.Position).Magnitude
+            if dist < shortest then
+                shortest = dist
+                closest = root
+            end
+        end
+    end
+    return closest
+end
+
+-- Shared Hook Engine (Optimized to prevent double hooks)
+local engineHooked = false
+local oldGetMouseHit = nil
+local oldIndex = nil
+local rawMeta = nil
+
+local function silentAimActive()
+    return TaserConfig.Enabled or PepperConfig.Enabled
+end
+
+local function hookEngine()
+    if engineHooked then return end
+    engineHooked = true
+
+    pcall(function()
+        oldGetMouseHit = hookfunction(UserInputService.GetMouseHit, function(self, ...)
+            if silentAimActive() then
+                local part = getClosestHostile()
+                if part then return CFrame.new(part.Position) end
+            end
+            return oldGetMouseHit(self, ...)
+        end)
+    end)
+
+    pcall(function()
+        rawMeta = getrawmetatable(game)
+        if setreadonly then setreadonly(rawMeta, false) end
+        oldIndex = rawMeta.__index
+        rawMeta.__index = newcclosure(function(self, key)
+            if silentAimActive() and (key == "Hit" or key == "hit") and self:IsA("Mouse") then
+                local part = getClosestHostile()
+                if part then return CFrame.new(part.Position) end
+            end
+            return oldIndex(self, key)
+        end)
+        if setreadonly then setreadonly(rawMeta, true) end
+    end)
+end
+
+-- Peppergun Custom Module Hook
+local pepperCustomHooked = false
+local oldCustomGetMouseHit = nil
+
+local function hookPepperCustom()
+    if pepperCustomHooked then return end
+    pepperCustomHooked = true
+    task.spawn(function()
+        local serviceFolder = ReplicatedStorage:WaitForChild("Service", 10)
+        if serviceFolder then
+            local customUISModule = serviceFolder:WaitForChild("UserInputService", 5)
+            if customUISModule then
+                local customUIS = require(customUISModule)
+                if customUIS and customUIS.GetMouseHit then
+                    oldCustomGetMouseHit = customUIS.GetMouseHit
+                    customUIS.GetMouseHit = function(...)
+                        if PepperConfig.Enabled then
+                            local part = getClosestHostile()
+                            if part then return CFrame.new(part.Position) end
+                        end
+                        return oldCustomGetMouseHit(...)
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Taser Toggle
+SilentAimSection:Toggle({
+    Title    = "Taser Silent Aim",
+    Desc     = "Silently redirect taser shots to the closest hostile PATIENT.",
+    Icon     = "zap",
+    Value    = false,
+    Flag     = "TaserSilentAimEnabled",
+    Callback = function(state)
+        TaserConfig.Enabled = state
+        if state then hookEngine() end
+    end,
+})
+
+-- Peppergun Toggle
+SilentAimSection:Toggle({
+    Title    = "Peppergun Silent Aim",
+    Desc     = "Silently redirect peppergun shots to the closest hostile PATIENT.",
+    Icon     = "flame",
+    Value    = false,
+    Flag     = "PepperSilentAimEnabled",
+    Callback = function(state)
+        PepperConfig.Enabled = state
+        if state then 
+            hookEngine()
+            hookPepperCustom()
+        end
+    end,
+})
 
 -- ============================================================
 -- CONFIG LOAD & CLEANUP
