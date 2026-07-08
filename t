@@ -1385,9 +1385,6 @@ LocalPlayerSection:Toggle({
 Window:Section({ Title = "Teams" })
 
 local OrderlyTab = Window:Tab({ Title = "Orderly", Icon = "shield" })
-local EPUTab = Window:Tab({ Title = "EPU", Icon = "shield-check" })
-local PatientTab = Window:Tab({ Title = "Patient", Icon = "square-user-round" })
-local MedicalTab = Window:Tab({ Title = "Medical", Icon = "pill" })
 
 -- ── Section: Silent Aim ───────────────────────────────────
 local SilentAimSection = OrderlyTab:Section({ Title = "Silent Aim", Icon = "ear-off", Box = false, Opened = true })
@@ -1622,6 +1619,15 @@ RifleSection:Input({
         if num and num >= 0 then TaserRifleConfig.FireDelay = num end
     end,
 })
+
+local EPUTab = Window:Tab({ Title = "EPU", Icon = "shield-check" })
+
+-- ── Section: Work in Progress ─────────────────────────────
+local EPUSection = EPUTab:Section({ Title = "Work in Progress", Icon = "briefcase-business", Box = false, Opened = true })
+EPUSection:Paragraph({ Title = "Coming Soon", Desc = "We're going to add more awesome features for this tab someday soon." })
+
+local PatientTab = Window:Tab({ Title = "Patient", Icon = "square-user-round" })
+local MedicalTab = Window:Tab({ Title = "Medical", Icon = "pill" })
 
 -- ============================================================
 -- CONFIG LOAD & CLEANUP
